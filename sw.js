@@ -1,4 +1,4 @@
-const CACHE_NAME = 'buscaminas-v1';
+const CACHE_NAME = 'buscaminas-v2';
 const ASSETS = [
   './',
   './index.html',
