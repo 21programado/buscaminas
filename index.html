@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buscaminas 16x16 Dark</title>
+  
+  <!-- PWA & Theme Meta Tags -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#121214">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Buscaminas">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
+  <style>
+    :root {
+      --bg-color: #121214;
+      --card-bg: #1e1e24;
+      --cell-bg: #2b2b36;
+      --cell-hover: #3a3a49;
+      --cell-revealed: #16161a;
+      --text-color: #f1f1f3;
+      --border-color: #333340;
+      
+      /* Colores para los números sobre fondo oscuro */
+      --num-1: #4ea8de;
+      --num-2: #72efdd;
+      --num-3: #ff70a6;
+      --num-4: #ff9770;
+      --num-5: #ffd670;
+      --num-6: #e0aaff;
+      --num-7: #ff4d6d;
+      --num-8: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .container {
+      background-color: var(--card-bg);
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.25rem;
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+
+    .status-text {
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .status-text.win { color: #72efdd; }
+    .status-text.lose { color: #ff4d6d; }
+
+    .btn-reset {
+      background-color: #2b2b36;
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+      padding: 0.6rem 1.2rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-reset:hover {
+      background-color: var(--cell-hover);
+      border-color: #555566;
+    }
+
+    .btn-reset:active {
+      transform: scale(0.97);
+    }
+
+    /* Tablero Grid de 16x16 */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      gap: 3px;
+      width: 100%;
+      aspect-ratio: 1;
+      background-color: var(--border-color);
+      padding: 3px;
+      border-radius: 8px;
+    }
+
+    .cell {
+      background-color: var(--cell-bg);
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: clamp(0.6rem, 2.5vw, 1.1rem);
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+
+    .cell:hover:not(.revealed) {
+      background-color: var(--cell-hover);
+    }
+
+    .cell.revealed {
+      background-color: var(--cell-revealed);
+      cursor: default;
+    }
+
+    .cell.mine {
+      background-color: #3d0c15;
+    }
+
+    /* Asignación de colores según número de minas adyacentes */
+    .cell[data-count="1"] { color: var(--num-1); }
+    .cell[data-count="2"] { color: var(--num-2); }
+    .cell[data-count="3"] { color: var(--num-3); }
+    .cell[data-count="4"] { color: var(--num-4); }
+    .cell[data-count="5"] { color: var(--num-5); }
+    .cell[data-count="6"] { color: var(--num-6); }
+    .cell[data-count="7"] { color: var(--num-7); }
+    .cell[data-count="8"] { color: var(--num-8); }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="header">
+      <div id="status" class="status-text">¡Suerte!</div>
+      <button id="reset-btn" class="btn-reset">Reiniciar</button>
+    </div>
+
+    <div id="grid" class="grid"></div>
+  </div>
+
+  <script>
+    const ROWS = 16;
+    const COLS = 16;
+    const MINES_COUNT = 40;
+
+    const gridElement = document.getElementById('grid');
+    const statusElement = document.getElementById('status');
+    const resetBtn = document.getElementById('reset-btn');
+
+    let board = [];
+    let isFirstClick = true;
+    let gameOver = false;
+    let revealedCount = 0;
+
+    function initGame() {
+      gridElement.innerHTML = '';
+      board = [];
+      isFirstClick = true;
+      gameOver = false;
+      revealedCount = 0;
+      statusElement.textContent = '¡Suerte!';
+      statusElement.className = 'status-text';
+
+      for (let r = 0; r < ROWS; r++) {
+        board[r] = [];
+        for (let c = 0; c < COLS; c++) {
+          const cellElement = document.createElement('div');
+          cellElement.classList.add('cell');
+          cellElement.dataset.row = r;
+          cellElement.dataset.col = c;
+          
+          cellElement.addEventListener('click', () => handleCellClick(r, c));
+          
+          gridElement.appendChild(cellElement);
+
+          board[r][c] = {
+            element: cellElement,
+            isMine: false,
+            isRevealed: false,
+            adjacentMines: 0
+          };
+        }
+      }
+    }
+
+    function placeMines(firstRow, firstCol) {
+      let minesPlaced = 0;
+      
+      while (minesPlaced < MINES_COUNT) {
+        const r = Math.floor(Math.random() * ROWS);
+        const c = Math.floor(Math.random() * COLS);
+
+        const isNearFirstClick = Math.abs(r - firstRow) <= 1 && Math.abs(c - firstCol) <= 1;
+
+        if (!board[r][c].isMine && !isNearFirstClick) {
+          board[r][c].isMine = true;
+          minesPlaced++;
+        }
+      }
+
+      calculateAdjacentMines();
+    }
+
+    function calculateAdjacentMines() {
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (board[r][c].isMine) continue;
+
+          let count = 0;
+          getNeighbors(r, c).forEach(([nr, nc]) => {
+            if (board[nr][nc].isMine) count++;
+          });
+
+          board[r][c].adjacentMines = count;
+        }
+      }
+    }
+
+    function getNeighbors(r, c) {
+      const neighbors = [];
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+            neighbors.push([nr, nc]);
+          }
+        }
+      }
+      return neighbors;
+    }
+
+    function handleCellClick(r, c) {
+      if (gameOver) return;
+
+      const cell = board[r][c];
+      if (cell.isRevealed) return;
+
+      if (isFirstClick) {
+        placeMines(r, c);
+        isFirstClick = false;
+      }
+
+      if (cell.isMine) {
+        triggerGameOver(false);
+        return;
+      }
+
+      revealCell(r, c);
+
+      const totalSafeCells = (ROWS * COLS) - MINES_COUNT;
+      if (revealedCount === totalSafeCells) {
+        triggerGameOver(true);
+      }
+    }
+
+    function revealCell(r, c) {
+      const cell = board[r][c];
+      if (cell.isRevealed) return;
+
+      cell.isRevealed = true;
+      cell.element.classList.add('revealed');
+      revealedCount++;
+
+      if (cell.adjacentMines > 0) {
+        cell.element.textContent = cell.adjacentMines;
+        cell.element.dataset.count = cell.adjacentMines;
+      } else {
+        getNeighbors(r, c).forEach(([nr, nc]) => {
+          if (!board[nr][nc].isRevealed) {
+            revealCell(nr, nc);
+          }
+        });
+      }
+    }
+
+    function triggerGameOver(isWin) {
+      gameOver = true;
+
+      if (isWin) {
+        statusElement.textContent = '¡Ganaste!';
+        statusElement.classList.add('win');
+      } else {
+        statusElement.textContent = '¡Juego Terminado!';
+        statusElement.classList.add('lose');
+      }
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const cell = board[r][c];
+          if (cell.isMine) {
+            cell.element.classList.add('revealed', 'mine');
+            cell.element.textContent = '💣';
+          }
+        }
+      }
+    }
+
+    resetBtn.addEventListener('click', initGame);
+    initGame();
+
+    // Registro del Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('Service Worker registrado:', reg.scope))
+          .catch(err => console.error('Error al registrar Service Worker:', err));
+      });
+    }
+  </script>
+</body>
+</html>
